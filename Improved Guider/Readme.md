@@ -20,6 +20,7 @@ This is an improved version of the already great OpenAstroGuider which mounts to
 - 2 x M4 t-nuts
 - 4 x M3x12 screws
 - 2 x M3 hex nuts
+- 1 x rubber band (for lens cover)
 
 ## Printing
 
