@@ -7,6 +7,6 @@ To Install:
 -"pip install -r requirements.txt"
 
 To run:
--Open Sharpcap first
+-Open Sharpcap first. It is important Sharpcap is opened prior to running the script. 
 -Run "python ./sharpcap_autopa_vX.X.py" from PowerShell
--Start polar alignment routine in Sharpcap. Once a solution is calculated by Sharpcap, the mount should start adjusting on it's own until aligned within 1 arcmin.
+-Start polar alignment routine in Sharpcap. Once a solution is calculated by Sharpcap, the mount should start adjusting automatically until aligned within 1 arcmin.
