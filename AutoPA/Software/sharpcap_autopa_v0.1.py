@@ -88,7 +88,7 @@ while aligned == False:
                         result = sendCommand(f":MAL{error[0]*(-1)}#")
                         #print(f"Adjusting altitude by {error[0]:.3f} arcminutes.")
                     if abs(error[1]) >= 1:
-                        result = sendCommand(f":MAZ{error[1]}#")
+                        result = sendCommand(f":MAZ{error[1]*(-1)}#")
                         #print(f"Adjusting azimuth by {error[1]:.3f} arcminutes.")
                     lastEntry = currentEntry
                     
