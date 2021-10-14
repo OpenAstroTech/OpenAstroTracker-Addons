@@ -36,7 +36,7 @@ def altaz(axis, errorvalue, serialport):
 
 	#print(command) #For debugging
 
-	ser = serial.Serial(serialport, 57600, timeout = 1)
+	ser = serial.Serial(serialport, 19200, timeout = 1)
 	#commandToSend = ':Sr16:00:00#:MS#'
 	ser.write(str(commandToSend).encode())
 	return
