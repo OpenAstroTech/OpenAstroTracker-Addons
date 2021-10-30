@@ -1,6 +1,6 @@
 Update v2!
 
-<iframe width="560" height="315" src="https://www.youtube.com/embed/RBGeC_PBswA" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+https://youtu.be/RBGeC_PBswA
 
 Now with a printed thread for focusing and better mounting for the sensor. Print each part exactly once.
 
