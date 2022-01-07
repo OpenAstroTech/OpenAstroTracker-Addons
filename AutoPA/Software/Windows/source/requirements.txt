@@ -1,0 +1,3 @@
+pywin32==301
+pyqt5
+cx_freeze
