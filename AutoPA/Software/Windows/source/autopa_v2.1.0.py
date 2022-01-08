@@ -18,7 +18,7 @@ import json
 import math
 from PyQt5 import QtCore, QtGui, QtWidgets
 import sys, os
-from collections import OrderedDict
+import collections
 import logging
 
 class QTextEditLogger(logging.Handler):
@@ -30,7 +30,16 @@ class QTextEditLogger(logging.Handler):
     def emit(self, record):
         msg = self.format(record)
         self.widget.appendPlainText(msg)
-        
+
+class DuplicateFilter(object):
+    def __init__(self):
+        self.msgs = collections.deque(maxlen=3)
+       
+    def filter(self, record):
+        rv = record.msg not in self.msgs
+        self.msgs.append(record.msg)
+        return rv
+
 class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
     def setupUi(self, Dialog):
         Dialog.setObjectName("AutoPA")
@@ -86,8 +95,10 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
         
         logTextBox = QTextEditLogger(self)
         logTextBox.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-        logging.getLogger().addHandler(logTextBox)
-        logging.getLogger().setLevel(logging.INFO)
+        self.logger = logging.getLogger()
+        self.logger.addHandler(logTextBox)
+        self.logger.addFilter(DuplicateFilter())
+        self.logger.setLevel(logging.INFO)
         self.formLayout.setWidget(10, QtWidgets.QFormLayout.SpanningRole, logTextBox.widget)
 
         self.timer=QtCore.QTimer()
@@ -160,11 +171,12 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
             data = json.loads(input[1])
             error.append((self.degToArcmin(data["AltitudeError"]) - altitudeOffset)*(-1))
             error.append((self.degToArcmin(data["AzimuthError"]) - azimuthOffset)*(-1))
-            error.append(self.degToArcmin(data["TotalError"]))
+            error.append(math.hypot(error[0], error[1]))
         elif software == "Sharpcap3.2" or software == "Sharpcap4.0":
             error.append(self.degToArcmin(self.altitudeError(input[1], input[3])) - altitudeOffset)
             error.append(self.degToArcmin(self.azimuthError(input[2], input[4])) - azimuthOffset)
-            error.append(math.hypot(error[0], error[1]))    
+            error.append(math.hypot(error[0], error[1]))  
+        logging.debug(f"Error from log: {error}.")
         return(error)
         
     def sendCommand(self, command):
@@ -241,6 +253,7 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
                             logging.info(f"Total error in arcminutes: {error[2]:.3f}\'")
                             if abs(error[2]) < self.accuracy:
                                 self.aligned = True
+                                logging.info(f"Polar aligned to within {error[0]*60:.0f}\" altitude and {error[1]*60:.0f}\" azimuth.")
                             else:
                                 logging.info("Correction needed.")
                                 result = self.sendCommand(f":MAL{error[0]}#")
@@ -255,11 +268,8 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
             except ConnectionError:
                 self.aligned = True
                 return
-        else:
-            logging.info(f"Polar aligned to within {error[0]*60:.0f}\" altitude and {error[1]*60:.0f}\" azimuth.")
-           
 
-software_options = OrderedDict([
+software_options = collections.OrderedDict([
     ('NINA', ''),
     ('Sharpcap4.0', ''),
     ('Sharpcap3.2', ''),
