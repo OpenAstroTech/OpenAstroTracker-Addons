@@ -322,7 +322,7 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
                         log = self.getLatestLogEntry(softwareTypes[self.software.currentText()]["logpath"], softwareTypes[self.software.currentText()]["expression"])
                     except FileNotFoundError:
                         log = None
-                        logging.error(f"Error retrieving log from {self.software.currentText()}. Logfile may not exist.")
+                        logging.error(f"Error retrieving log from {self.software.currentText()}. Logfile may not exist or does not contain alignment info.")
                     if log is not None:
                         currentEntry = datetime.strptime(datetime.today().strftime("%Y-%m-%d") + " " + log[0][:-1], '%Y-%m-%d %H:%M:%S.%f') #get last log entry (assume todays date)
                         if currentEntry != self.lastEntry and currentEntry > self.adjustmentFinished:   #Only adjust based on the latest unused entry, and only if it was entered into the log after the adjustment was finished.
