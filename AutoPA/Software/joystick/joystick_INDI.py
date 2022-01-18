@@ -2,7 +2,7 @@
 import curses
 import time
 import sys
-import indi, serial, io
+import indi, serial
 import re
 
 def clearline(screen, line):
@@ -28,11 +28,11 @@ def sendCommand(command, telescope="LX200 GPS")
     indi.disconnectScope(indiclient, telescope)
 
     #Send command     
-    ser = serial.Serial(serialport, baudrate, timeout = 1)
-    sio = io.TextIOWrapper(io.BufferedRWPair(ser, ser))
-    ser.write(str(command).encode())
-    sio.flush()
-    result = sio.readline()
+    ser = serial.Serial(serialport, baudrate, timeout = 0.2)
+    ser.flush()
+    ser.write(str.encode(command))
+    result = ser.readline()
+    result = result[:-1].decode('utf-8')
     
     #Reconnect OAT to indi and disconnect from server
     indi.connectScope(indiclient, telescope)

@@ -77,9 +77,9 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
         self.label_6 = QtWidgets.QLabel(Dialog)
         self.label_6.setObjectName("label_6")
         self.formLayout.setWidget(5, QtWidgets.QFormLayout.LabelRole, self.label_6)
-        self.serialport = QtWidgets.QLineEdit(Dialog)
-        self.serialport.setObjectName("serialport")
-        self.formLayout.setWidget(5, QtWidgets.QFormLayout.FieldRole, self.serialport)
+        self.serialportInput = QtWidgets.QLineEdit(Dialog)
+        self.serialportInput.setObjectName("serialportInput")
+        self.formLayout.setWidget(5, QtWidgets.QFormLayout.FieldRole, self.serialportInput)
         self.verbose = QtWidgets.QCheckBox(Dialog)
         self.verbose.setObjectName("verbose")
         self.formLayout.setWidget(6, QtWidgets.QFormLayout.LabelRole, self.verbose)
@@ -118,6 +118,9 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
         self.stillAdjusting = False
         self.adjustmentFinished = datetime.now()
         self.after_id = None
+        self.serialport = ""
+        self.indiclient = None
+        self.ser = None
         
         self.retranslateUi(Dialog)
         QtCore.QMetaObject.connectSlotsByName(Dialog)
@@ -138,8 +141,8 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
         self.altitudeOffset.setPlaceholderText(_translate("Dialog", "0"))
         self.label_5.setText(_translate("Dialog", "Telescope Name (ASCOM: \"OpenAstroTracker\", INDI: \"LX200 GPS\""))
         self.telescopeName.setPlaceholderText(_translate("Dialog", "Override default?"))
-        self.label_6.setText(_translate("Dialog", "Serial Port of OAT [Ekos only] (Default /dev/ACM0):"))
-        self.serialport.setPlaceholderText(_translate("Dialog", "Override default? (Ekos only)"))
+        self.label_6.setText(_translate("Dialog", "Serial Port of OAT [Ekos only] (Default /dev/ttyACM0):"))
+        self.serialportInput.setPlaceholderText(_translate("Dialog", "Override default? (Ekos only)"))
         self.verbose.setText(_translate("Dialog", "Verbose Output"))
         self.startButton.setText(_translate("Dialog", "Start"))
         self.stopButton.setText(_translate("Dialog", "Stop"))
@@ -225,30 +228,21 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
             result = tel.Action("Serial:PassThroughCommand", command)
             tel.Connected = False
         else:
-            import indi, serial, io
-            #Connect to indi server
-            indiclient, blobEvent = indi.indiserverConnect()
-
-            #Disconnect OAT from indi to free up serial port
-            indi.disconnectScope(indiclient, telescope)
-
             #Send command     
-            ser = serial.Serial(serialport, baudrate, timeout = 1)
-            sio = io.TextIOWrapper(io.BufferedRWPair(ser, ser))
-            ser.write(str(command).encode())
-            sio.flush()
-            result = sio.readline()
-            
-            #Reconnect OAT to indi and disconnect from server
-            indi.connectScope(indiclient, telescope)
-            indi.indiserverDisconnect(indiclient)
+            logging.debug("Sending command...")
+            self.ser.flush()
+            self.ser.write(str.encode(command))
+            result = self.ser.readline()
+            result = result[:-1].decode('utf-8')
+            logging.debug("Command response received")
         return result
             
     def isAdjusting(self, software, telescope, serialport):
-        try:
+        try:  
+            logging.debug("Getting mount status...")
             result = self.sendCommand(":GX#,#", software, telescope, serialport)
             if not result:
-                raise ConnectionError
+                raise Exception
             logging.debug(result)
             status = re.search(",(......),", result)[1]
             if status[3]=="-" and status[4]=="-":
@@ -278,11 +272,36 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
                 self.telescope = "LX200 GPS"
             else:
                 self.telescope = "OpenAstroTracker"
+        if self.serialportInput.text() == "":
+            if self.software.currentText() == "Ekos":
+                self.serialport = "/dev/ttyACM0"
+            else:
+                self.serialport = self.serialportInput.text()
+        if self.software.currentText() == "Ekos":
+            import indi, serial
+            #Connect to indi server
+            self.indiclient, self.blobEvent = indi.indiserverConnect()
+            logging.debug("AutoPA connected to INDI server")
+
+            #Disconnect OAT from indi to free up serial port
+            indi.disconnectScope(self.indiclient, self.telescope)
+            logging.debug("Telescope disconnected from INDI")
+            
+            print("Opening serial port on " + self.serialport + '...')
+            self.ser = serial.Serial(self.serialport, 19200, timeout = 0.2)
         
     def stop(self):
         self.aligned = True
-        logging.info("Stopping AutoPA routine")
         self.timer.stop()
+        if self.software.currentText() == "Ekos":
+            import indi
+            self.ser.close()
+            #Reconnect OAT to indi and disconnect from server
+            indi.connectScope(self.indiclient, self.telescope)
+            logging.debug("Telescope reconnected to INDI")
+            indi.indiserverDisconnect(self.indiclient)
+            logging.debug("AutoPA disconnected from INDI server")
+        logging.info("Stopping AutoPA routine")
         
     def close(self):
         sys.exit(self)
@@ -290,7 +309,7 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
     def alignment(self):
         if not self.aligned:
             try:
-                if self.isAdjusting(self.software.currentText(), self.telescope, self.serialport.text()):
+                if self.isAdjusting(self.software.currentText(), self.telescope, self.serialport):
                     logging.info("Mount is still adjusting position.")
                     self.stillAdjusting = True
                 else:
@@ -312,13 +331,14 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
                             logging.info(f"Azimuth error in arcminutes: {error[1]:.3f}\'")
                             logging.info(f"Total error in arcminutes: {error[2]:.3f}\'")
                             if abs(error[2]) < self.accuracy:
-                                self.aligned = True
                                 logging.info(f"Polar aligned to within {error[0]*60:.0f}\" altitude and {error[1]*60:.0f}\" azimuth.")
+                                self.stop()
+                                return
                             else:
                                 logging.info("Correction needed.")
-                                result = self.sendCommand(f":MAL{error[0]}#", self.software.currentText(), self.telescope, self.serialport.text())
+                                result = self.sendCommand(f":MAL{error[0]}#", self.software.currentText(), self.telescope, self.serialport)
                                 logging.debug(f"Adjusting altitude by {error[0]:.3f} arcminutes.")
-                                result = self.sendCommand(f":MAZ{error[1]*(-1)}#", self.software.currentText(), self.telescope, self.serialport.text())
+                                result = self.sendCommand(f":MAZ{error[1]*(-1)}#", self.software.currentText(), self.telescope, self.serialport)
                                 logging.debug(f"Adjusting altitude by {error[0]:.3f} arcminutes.")
                                 self.lastEntry = currentEntry
                         else:
@@ -326,7 +346,7 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
                     else:
                         logging.info(f"{self.software.currentText()} has not yet determined the polar alignment error.")
             except ConnectionError:
-                self.aligned = True
+                self.stop()
                 return
 
 software_options = collections.OrderedDict([
