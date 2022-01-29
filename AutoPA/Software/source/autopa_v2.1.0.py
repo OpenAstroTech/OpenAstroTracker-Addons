@@ -121,6 +121,7 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
         self.serialport = ""
         self.indiclient = None
         self.ser = None
+        self.solveCounter = 0
         
         self.retranslateUi(Dialog)
         QtCore.QMetaObject.connectSlotsByName(Dialog)
@@ -317,6 +318,7 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
                         logging.info(f"Mount adjustment finished.")
                         self.stillAdjusting = False
                         self.adjustmentFinished = datetime.now()
+                        self.solveCounter = 0
                     logging.info(f"Getting latest log entry from {self.software.currentText()}.")
                     try:
                         log = self.getLatestLogEntry(softwareTypes[self.software.currentText()]["logpath"], softwareTypes[self.software.currentText()]["expression"])
@@ -325,7 +327,11 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
                         logging.error(f"Error retrieving log from {self.software.currentText()}. Logfile may not exist or does not contain alignment info.")
                     if log is not None:
                         currentEntry = datetime.strptime(datetime.today().strftime("%Y-%m-%d") + " " + log[0][:-1], '%Y-%m-%d %H:%M:%S.%f') #get last log entry (assume todays date)
-                        if currentEntry != self.lastEntry and currentEntry > self.adjustmentFinished:   #Only adjust based on the latest unused entry, and only if it was entered into the log after the adjustment was finished.
+                        if currentEntry != self.lastEntry and currentEntry > self.adjustmentFinished:
+                            self.solveCounter += 1 #Increment counter if the latest unused entry was entered into the log after the adjustment was finished.
+                        if (self.software.currentText() != "NINA" and self.solveCounter >= 1) or (self.software.currentText() == "NINA" and self.solveCounter >= 3):
+                            #If using NINA, wait for three complete solves after adjustment is finished to prevent using old data
+                            self.solveCounter = 0
                             error = self.parseError(self.software.currentText(), log, float(self.azimuthOffset.text()), float(self.altitudeOffset.text()))
                             logging.info(f"Altitude error in arcminutes: {error[0]:.3f}\'")
                             logging.info(f"Azimuth error in arcminutes: {error[1]:.3f}\'")
