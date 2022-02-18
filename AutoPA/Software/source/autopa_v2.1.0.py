@@ -111,7 +111,7 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
         self.timer=QtCore.QTimer()
         self.timer.timeout.connect(self.alignment)
 
-        self.lastEntry = None
+        self.lastEntry = datetime.now()
         self.aligned = True
         self.stillAdjusting = False
         self.adjustmentFinished = datetime.now()
@@ -120,12 +120,14 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
         self.indiclient = None
         self.ser = None
         self.solveCounter = 0
-        
-        self.retranslateUi(Dialog)
-        QtCore.QMetaObject.connectSlotsByName(Dialog)
+        self.autorun = False
         if len(sys.argv) > 1:
             if sys.argv[1] == "--autorun":
-                self.startButton.click()
+                self.autorun = True
+        self.retranslateUi(Dialog)
+        QtCore.QMetaObject.connectSlotsByName(Dialog)
+        if self.autorun:
+            self.startButton.click()
 
     def retranslateUi(self, Dialog):
         _translate = QtCore.QCoreApplication.translate
@@ -165,7 +167,8 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
                     result, data = win32file.ReadFile(f, bufSize, None)
                     buf += data
                 result = re.findall(expression, buf.decode("utf-8"))[-1]
-                return(result)
+                logfileModification = os.path.getmtime(latest_file)
+                return(result, logfileModification)
             except:
                 raise FileNotFoundError   
         elif sys.platform == "linux":
@@ -176,7 +179,8 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
                 FileObject = open(latest_file,"r")
                 contents = FileObject.readlines()
                 result = re.findall(expression, contents.decode("utf-8"))[-1]
-                return(result)
+                logfileModification = os.path.getmtime(latest_file)
+                return(result, logfileModification)
             except:
                 raise FileNotFoundError
         
@@ -326,23 +330,25 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
                     except FileNotFoundError:
                         log = None
                         logging.error(f"Error retrieving log from {self.software.currentText()}. Logfile may not exist or does not contain alignment info.")
+                        if self.autorun:
+                            sys.exit("Polar alignment values not found.")
                     if log is not None:
-                        currentEntry = datetime.strptime(datetime.today().strftime("%Y-%m-%d") + " " + log[0][:-1], '%Y-%m-%d %H:%M:%S.%f') #get last log entry (assume todays date)
+                        #Entry date is based on file timestamp, entry time is based on log entry data
+                        currentEntry = datetime.strptime(datetime.fromtimestamp(log[1]).strftime("%Y-%m-%d") + " " + log[0][0][:-1], '%Y-%m-%d %H:%M:%S.%f')
                         if currentEntry != self.lastEntry and currentEntry > self.adjustmentFinished:
                             self.solveCounter += 1 #Increment counter if the latest unused entry was entered into the log after the adjustment was finished.
                         if (self.software.currentText() != "NINA" and self.solveCounter >= 1) or (self.software.currentText() == "NINA" and self.solveCounter >= 3):
                             #If using NINA, wait for three complete solves after adjustment is finished to prevent using old data
                             self.solveCounter = 0
-                            error = self.parseError(self.software.currentText(), log, float(self.azimuthOffset.text()), float(self.altitudeOffset.text()))
+                            error = self.parseError(self.software.currentText(), log[0], float(self.azimuthOffset.text()), float(self.altitudeOffset.text()))
                             logging.info(f"Altitude error in arcminutes: {error[0]:.3f}\'")
                             logging.info(f"Azimuth error in arcminutes: {error[1]:.3f}\'")
                             logging.info(f"Total error in arcminutes: {error[2]:.3f}\'")
                             if abs(error[2]) < self.accuracy:
                                 logging.info(f"Polar aligned to within {error[0]*60:.0f}\" altitude and {error[1]*60:.0f}\" azimuth.")
                                 self.stop()
-                                if len(sys.argv) > 1:
-                                    if sys.argv[1] == "--autorun":
-                                        sys.exit(self)
+                                if self.autorun:
+                                    sys.exit(self)
                                 return
                             else:
                                 logging.info("Correction needed.")
@@ -357,6 +363,8 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
                         logging.info(f"{self.software.currentText()} has not yet determined the polar alignment error.")
             except ConnectionError:
                 self.stop()
+                if self.autorun:
+                    sys.exit("AutoPA could not connect to mount.")
                 return
 
 software_options = collections.OrderedDict([
