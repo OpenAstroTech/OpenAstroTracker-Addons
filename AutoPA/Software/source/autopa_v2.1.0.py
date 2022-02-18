@@ -87,8 +87,6 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
         self.horizontalLayout = QtWidgets.QHBoxLayout()
         self.horizontalLayout.setObjectName("horizontalLayout")
         self.startButton = QtWidgets.QPushButton(Dialog)
-        self.startButton.setAutoRepeat(True)
-        self.startButton.setAutoRepeatInterval(5000)
         self.startButton.setObjectName("startButton")
         self.startButton.clicked.connect(self.start)
         self.horizontalLayout.addWidget(self.startButton)
@@ -125,6 +123,9 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
         
         self.retranslateUi(Dialog)
         QtCore.QMetaObject.connectSlotsByName(Dialog)
+        if len(sys.argv) > 1:
+            if sys.argv[1] == "--autorun":
+                self.startButton.click()
 
     def retranslateUi(self, Dialog):
         _translate = QtCore.QCoreApplication.translate
@@ -339,6 +340,9 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
                             if abs(error[2]) < self.accuracy:
                                 logging.info(f"Polar aligned to within {error[0]*60:.0f}\" altitude and {error[1]*60:.0f}\" azimuth.")
                                 self.stop()
+                                if len(sys.argv) > 1:
+                                    if sys.argv[1] == "--autorun":
+                                        sys.exit(self)
                                 return
                             else:
                                 logging.info("Correction needed.")
