@@ -12,6 +12,7 @@
 1. Once a solution is shown for adjusting azimuth/altitude, start AutoPA and the mount will start adjusting automatically until aligned within the target accuracy.
 
 ### To run on Linux (Astroberry, Stellarmate, etc.):
+## NOTE: This is untested and likely does not work yet.
 1. Install prerequisites:
    - `sudo apt-get install python3-dev swig libindi-dev g++ libnova-dev libcfitsio-dev zlib1g-dev`
    - `pip3 install pyindi-client`
