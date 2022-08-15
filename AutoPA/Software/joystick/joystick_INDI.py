@@ -20,7 +20,7 @@ def keypress(screen, altaz, value):
     screen.addstr(3, 0, line)
     return True
 
-def sendCommand(command, telescope="LX200 GPS")
+def sendCommand(command, telescope="LX200 GPS"):
     #Connect to indi server
     indiclient, blobEvent = indi.indiserverConnect()
 
