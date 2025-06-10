@@ -38,6 +38,61 @@ class DuplicateFilter(object):
         return rv
 
 class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
+    def __init__(self):
+        super().__init__()
+        self.config_file = Path.home() / '.autopa_config.json'
+        self.load_last_software()
+        self.load_last_accuracy()
+        self.setupUi(self)
+
+    def load_last_software(self):
+        try:
+            if self.config_file.exists():
+                with open(self.config_file, 'r') as f:
+                    config = json.load(f)
+                    self.last_software = config.get('last_software', '')
+            else:
+                self.last_software = ''
+        except Exception as e:
+            logging.error(f"Error loading config: {e}")
+            self.last_software = ''
+
+    def load_last_accuracy(self):
+        try:
+            if self.config_file.exists():
+                with open(self.config_file, 'r') as f:
+                    config = json.load(f)
+                    self.last_accuracy = config.get('last_accuracy', '60')
+            else:
+                self.last_accuracy = '60'
+        except Exception as e:
+            logging.error(f"Error loading config: {e}")
+            self.last_accuracy = '60'
+
+    def save_last_software(self, software):
+        try:
+            config = {}
+            if self.config_file.exists():
+                with open(self.config_file, 'r') as f:
+                    config = json.load(f)
+            config['last_software'] = software
+            with open(self.config_file, 'w') as f:
+                json.dump(config, f)
+        except Exception as e:
+            logging.error(f"Error saving config: {e}")
+
+    def save_last_accuracy(self, accuracy):
+        try:
+            config = {}
+            if self.config_file.exists():
+                with open(self.config_file, 'r') as f:
+                    config = json.load(f)
+            config['last_accuracy'] = accuracy
+            with open(self.config_file, 'w') as f:
+                json.dump(config, f)
+        except Exception as e:
+            logging.error(f"Error saving config: {e}")
+
     def setupUi(self, Dialog):
         Dialog.setObjectName("AutoPA")
         Dialog.resize(400, 300)
@@ -128,6 +183,16 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
         QtCore.QMetaObject.connectSlotsByName(Dialog)
         if self.autorun:
             self.startButton.click()
+
+        self.software.currentTextChanged.connect(self.on_software_changed)
+        self.accuracy_input.textChanged.connect(self.on_accuracy_changed)
+        
+        # Set the last selected software if it exists
+        if self.last_software and self.last_software in software_options:
+            self.software.setCurrentText(self.last_software)
+        
+        # Set the last accuracy value if it exists
+        self.accuracy_input.setText(self.last_accuracy)
 
     def retranslateUi(self, Dialog):
         _translate = QtCore.QCoreApplication.translate
@@ -366,6 +431,12 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
                 if self.autorun:
                     sys.exit("AutoPA could not connect to mount.")
                 return
+
+    def on_software_changed(self, software):
+        self.save_last_software(software)
+
+    def on_accuracy_changed(self, accuracy):
+        self.save_last_accuracy(accuracy)
 
 software_options = collections.OrderedDict([
     ('NINA', ''),
