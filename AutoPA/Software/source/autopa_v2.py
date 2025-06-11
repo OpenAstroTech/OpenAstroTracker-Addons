@@ -221,9 +221,10 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
         if sys.platform == "win32":
             try:
                 import win32file
+                logging.debug(f"Logpath: {logpath}")
                 list_of_files = glob.glob(logpath)
                 latest_file = max(list_of_files, key=os.path.getctime)
-                logging.debug(latest_file)
+                logging.debug("Opening file: " + latest_file)
                 f = win32file.CreateFile(latest_file, win32file.GENERIC_READ, win32file.FILE_SHARE_DELETE | win32file.FILE_SHARE_READ | win32file.FILE_SHARE_WRITE, None, win32file.OPEN_EXISTING, win32file.FILE_ATTRIBUTE_NORMAL, None)
                 bufSize = 4096
                 code, data = win32file.ReadFile(f, bufSize)
@@ -440,6 +441,7 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
 
 software_options = collections.OrderedDict([
     ('NINA', ''),
+    ('NINA3', ''),
     ('Sharpcap4.x', ''),
     ('Sharpcap3.2', ''),
     ('Ekos', '')
@@ -449,6 +451,8 @@ today = date.today().strftime("%Y-%m-%d")
 softwareTypes = {
 "NINA":{        "expression": "(\d{2}:\d{2}:\d{2}.\d{3})\s-\s({.*})", 
                 "logpath": f"{Path.home()}\Documents\\N.I.N.A\PolarAlignment\*.log"},
+"NINA3":{        "expression": "(\d{2}:\d{2}:\d{2}.\d{3})\s-\s({.*})", 
+                "logpath": f"{os.getenv('LOCALAPPDATA')}\NINA\Logs\*.log"},
 "Sharpcap3.2":{ "expression": "(?:Info:)\t(\d{2}:\d{2}:\d{2}.\d{7}).*(?:AltAzCor=)(?:Alt=)(.*)[,](?:Az=)(.*).\s(?:AltAzPole=)(?:Alt=)(.*)[,](?:Az=)(.*).[,]\s(?:AltAzOffset=).*", 
                 "logpath": f"{os.getenv('LOCALAPPDATA')}\SharpCap\logs\*.log"},
 "Sharpcap4.x":{ "expression": "(?:Info)\W*(\d{2}:\d{2}:\d{2}.\d{6}).*(?:AltAzCor=)(?:Alt=)(.*)[,](?:Az=)(.*).\s(?:AltAzPole=)(?:Alt=)(.*)[,](?:Az=)(.*).[,]\s(?:AltAzOffset=).*", 
