@@ -161,6 +161,7 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
         self.logger.addHandler(logTextBox)
         self.logger.addFilter(DuplicateFilter())
         self.logger.setLevel(logging.INFO)
+        logTextBox.widget.setFont(QtGui.QFont("Consolas", 8))  # (or “Courier New” if Consolas is not available)
         self.formLayout.setWidget(10, QtWidgets.QFormLayout.SpanningRole, logTextBox.widget)
 
         self.timer=QtCore.QTimer()
@@ -221,7 +222,6 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
         if sys.platform == "win32":
             try:
                 import win32file
-                logging.debug(f"Logpath: {logpath}")
                 list_of_files = glob.glob(logpath)
                 latest_file = max(list_of_files, key=os.path.getctime)
                 logging.debug("Opening file: " + latest_file)
@@ -263,11 +263,28 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
         s = float(temp[2]) / 3600
         return (d + m + s)
 
+    def parseNINA3deg(self, input0, input1, input2):
+        sgn = input0[0]
+        if sgn == "-":
+            sgn = -1
+        else:
+            sgn = 1
+        d = abs(float(input0))
+        m = float(input1) / 60
+        s = float(input2) / 3600
+        return (sgn * (d + m + s))
+    
+
     def degToArcmin(self, input):
         return(input * 60)
 
     def parseError(self, software, input, azimuthOffset, altitudeOffset):
         error = []
+        if software == "NINA3":
+            # Log file lists Az, then Alt error
+            error.append(self.parseNINA3deg(input[4], input[5], input[6]) - altitudeOffset) 
+            error.append(self.parseNINA3deg(input[1], input[2], input[3]) - azimuthOffset)
+            error.append(math.hypot(error[0], error[1]))
         if software == "NINA":
             data = json.loads(input[1])
             error.append((self.degToArcmin(data["AltitudeError"]) - altitudeOffset)*(-1))
@@ -316,7 +333,7 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
             if not result:
                 raise Exception
             logging.debug(result)
-            status = re.search(",(......),", result)[1]
+            status = re.search(",(......),", result).group(1)
             if status[3]=="-" and status[4]=="-":
                 return False
             else:
@@ -450,13 +467,13 @@ software_options = collections.OrderedDict([
 today = date.today().strftime("%Y-%m-%d")
 softwareTypes = {
 "NINA":{        "expression": "(\d{2}:\d{2}:\d{2}.\d{3})\s-\s({.*})", 
-                "logpath": f"{Path.home()}\Documents\\N.I.N.A\PolarAlignment\*.log"},
-"NINA3":{        "expression": "(\d{2}:\d{2}:\d{2}.\d{3})\s-\s({.*})", 
-                "logpath": f"{os.getenv('LOCALAPPDATA')}\NINA\Logs\*.log"},
+                "logpath": fr"{Path.home()}\Documents\N.I.N.A\PolarAlignment\*.log"},
+"NINA3":{        "expression": r"[\d-]*T(.*?)\|.*PolarAlignment.cs\|.*Calculated Error: Az: (-*\d{2}).*?(\d{2})' (\d{2})\", Alt: (-*\d{2}).*?(\d{2})' (\d{2})\",.*",
+                "logpath": fr"{os.getenv('LOCALAPPDATA')}\NINA\Logs\*.log"},
 "Sharpcap3.2":{ "expression": "(?:Info:)\t(\d{2}:\d{2}:\d{2}.\d{7}).*(?:AltAzCor=)(?:Alt=)(.*)[,](?:Az=)(.*).\s(?:AltAzPole=)(?:Alt=)(.*)[,](?:Az=)(.*).[,]\s(?:AltAzOffset=).*", 
-                "logpath": f"{os.getenv('LOCALAPPDATA')}\SharpCap\logs\*.log"},
+                "logpath": fr"{os.getenv('LOCALAPPDATA')}\SharpCap\logs\*.log"},
 "Sharpcap4.x":{ "expression": "(?:Info)\W*(\d{2}:\d{2}:\d{2}.\d{6}).*(?:AltAzCor=)(?:Alt=)(.*)[,](?:Az=)(.*).\s(?:AltAzPole=)(?:Alt=)(.*)[,](?:Az=)(.*).[,]\s(?:AltAzOffset=).*", 
-                "logpath": f"{os.getenv('LOCALAPPDATA')}\SharpCap\logs\*.log"},
+                "logpath": fr"{os.getenv('LOCALAPPDATA')}\SharpCap\logs\*.log"},
 "Ekos":{ "expression": "(\d{2}:\d{2}:\d{2}.\d{3}).*(?:PAA Refresh).*(?:Corrected az:).*(?:\()(\s?-?\d\.\d{3}).*(?:alt:).*(\s?-?\d\.\d{3}).*(?:total:)", 
                 "logpath": f"{Path.home()}/.local/share/kstars/logs/{today}/*.txt"}
 }            
