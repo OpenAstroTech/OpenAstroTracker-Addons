@@ -9,7 +9,7 @@
 
 import glob
 import re
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import json
 import math
 from PyQt5 import QtCore, QtGui, QtWidgets
@@ -17,6 +17,35 @@ import sys, os
 import collections
 import logging
 from pathlib import Path
+
+# Application version
+VERSION = "2.5"
+
+class ElapsedTimeFormatter(logging.Formatter):
+    def __init__(self, start_time):
+        super().__init__('%(asctime)s - %(elapsed)s - %(levelname)s - %(message)s')
+        self.start_time = start_time
+        self.datefmt = '%Y-%m-%d %H:%M:%S.%f'[:-3]  # Format: YYYY-MM-DD HH:MM:SS.mmm
+
+    def formatTime(self, record, datefmt=None):
+        if datefmt:
+            # Format absolute timestamp
+            return datetime.fromtimestamp(record.created).strftime(datefmt)
+        else:
+            # Calculate elapsed time
+            elapsed = datetime.now() - self.start_time
+            # Convert to HH:mm:ss.s format
+            hours = int(elapsed.total_seconds() // 3600)
+            minutes = int((elapsed.total_seconds() % 3600) // 60)
+            seconds = elapsed.total_seconds() % 60
+            return f"{hours:02d}:{minutes:02d}:{seconds:05.1f}"
+
+    def format(self, record):
+        # Add elapsed time to the message
+        record.elapsed = self.formatTime(record)
+        # Format the absolute timestamp
+        record.asctime = self.formatTime(record, self.datefmt)
+        return super().format(record)
 
 class QTextEditLogger(logging.Handler):
     def __init__(self, parent):
@@ -40,10 +69,15 @@ class DuplicateFilter(object):
 class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
     def __init__(self):
         super().__init__()
-        self.config_file = Path.home() / '.autopa_config.json'
+        self.config_file = Path.home() / 'AutoPA' / 'config.json'
+        self.log_dir = Path.home() / 'AutoPA' / 'logs'
+        self.log_dir.mkdir(parents=True, exist_ok=True)
         self.load_last_software()
         self.load_last_accuracy()
+        # Load verbose state before UI setup
+        self.verbose_state = self.load_last_verbose()
         self.setupUi(self)
+        self.retranslateUi(self)
 
     def load_last_software(self):
         try:
@@ -69,6 +103,18 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
             logging.error(f"Error loading config: {e}")
             self.last_accuracy = '60'
 
+    def load_last_verbose(self):
+        try:
+            if self.config_file.exists():
+                with open(self.config_file, 'r') as f:
+                    config = json.load(f)
+                    if 'last_verbose' in config:
+                        return bool(config['last_verbose'])
+            return False
+        except Exception as e:
+            logging.error(f"Error loading config: {e}")
+            return False
+
     def save_last_software(self, software):
         try:
             config = {}
@@ -88,6 +134,18 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
                 with open(self.config_file, 'r') as f:
                     config = json.load(f)
             config['last_accuracy'] = accuracy
+            with open(self.config_file, 'w') as f:
+                json.dump(config, f)
+        except Exception as e:
+            logging.error(f"Error saving config: {e}")
+
+    def save_last_verbose(self, verbose):
+        try:
+            config = {}
+            if self.config_file.exists():
+                with open(self.config_file, 'r') as f:
+                    config = json.load(f)
+            config['last_verbose'] = verbose
             with open(self.config_file, 'w') as f:
                 json.dump(config, f)
         except Exception as e:
@@ -137,6 +195,8 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
         self.formLayout.setWidget(5, QtWidgets.QFormLayout.FieldRole, self.serialportInput)
         self.verbose = QtWidgets.QCheckBox(Dialog)
         self.verbose.setObjectName("verbose")
+        self.verbose.setChecked(self.verbose_state)
+        self.verbose.stateChanged.connect(self.on_verbose_changed)
         self.formLayout.setWidget(6, QtWidgets.QFormLayout.LabelRole, self.verbose)
 
         self.horizontalLayout = QtWidgets.QHBoxLayout()
@@ -149,19 +209,43 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
         self.stopButton.setObjectName("stopButton")
         self.stopButton.clicked.connect(self.stop)
         self.horizontalLayout.addWidget(self.stopButton)
+        self.openLogsButton = QtWidgets.QPushButton(Dialog)
+        self.openLogsButton.setObjectName("openLogsButton")
+        self.openLogsButton.clicked.connect(self.open_logs_folder)
+        self.horizontalLayout.addWidget(self.openLogsButton)
         self.cancelButton = QtWidgets.QPushButton(Dialog)
         self.cancelButton.setObjectName("cancelButton")
         self.cancelButton.clicked.connect(self.close)
         self.horizontalLayout.addWidget(self.cancelButton)
         self.formLayout.setLayout(6, QtWidgets.QFormLayout.FieldRole, self.horizontalLayout)
         
-        logTextBox = QTextEditLogger(self)
-        logTextBox.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+        # Store start time for elapsed time calculation
+        self.start_time = datetime.now()
+        
+        # Get the root logger and remove any existing handlers
         self.logger = logging.getLogger()
+        for handler in self.logger.handlers[:]:
+            self.logger.removeHandler(handler)
+        
+        logTextBox = QTextEditLogger(self)
+        # Simple formatter for GUI - just show the message
+        gui_formatter = logging.Formatter('%(message)s')
+        logTextBox.setFormatter(gui_formatter)
+        
+        # Add file handler with DEBUG level
+        log_file = self.log_dir / f'autopa_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log'
+        file_handler = logging.FileHandler(log_file)
+        # Full formatter for file - show timestamps and level
+        file_formatter = ElapsedTimeFormatter(self.start_time)
+        file_handler.setFormatter(file_formatter)
+        file_handler.setLevel(logging.DEBUG)  # Always log DEBUG level to file
+        self.logger.addHandler(file_handler)
+        
+        # Add GUI handler with level controlled by verbose checkbox
         self.logger.addHandler(logTextBox)
         self.logger.addFilter(DuplicateFilter())
-        self.logger.setLevel(logging.INFO)
-        logTextBox.widget.setFont(QtGui.QFont("Consolas", 8))  # (or “Courier New” if Consolas is not available)
+        self.logger.setLevel(logging.DEBUG)  # Set root logger to DEBUG to allow all levels to pass through
+        logTextBox.widget.setFont(QtGui.QFont("Consolas", 8))  # (or "Courier New" if Consolas is not available)
         self.formLayout.setWidget(10, QtWidgets.QFormLayout.SpanningRole, logTextBox.widget)
 
         self.timer=QtCore.QTimer()
@@ -194,10 +278,13 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
         
         # Set the last accuracy value if it exists
         self.accuracy_input.setText(self.last_accuracy)
+        
+        # Log startup completion after a short delay to ensure GUI is ready
+        QtCore.QTimer.singleShot(100, lambda: logging.info(f"AutoPA v{VERSION} started at {self.start_time.strftime('%Y-%m-%d %H:%M:%S')} and is ready"))
 
     def retranslateUi(self, Dialog):
         _translate = QtCore.QCoreApplication.translate
-        Dialog.setWindowTitle(_translate("Dialog", "AutoPA"))
+        Dialog.setWindowTitle(_translate("Dialog", f"AutoPA v{VERSION}"))
         self.label.setText(_translate("Dialog", "Choose your AutoPA software:"))
         self.software.addItems(software_options.keys())
         self.label_4.setText(_translate("Dialog", "Accuracy to align to (Default 60 arcseconds):"))
@@ -216,6 +303,7 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
         self.verbose.setText(_translate("Dialog", "Verbose Output"))
         self.startButton.setText(_translate("Dialog", "Start"))
         self.stopButton.setText(_translate("Dialog", "Stop"))
+        self.openLogsButton.setText(_translate("Dialog", "Logs"))
         self.cancelButton.setText(_translate("Dialog", "Close"))
 
     def getLatestLogEntry(self, logpath, expression):
@@ -348,9 +436,13 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
 
     def start(self):
         if self.verbose.isChecked():
-            logging.getLogger().setLevel(logging.DEBUG)
+            for handler in self.logger.handlers:
+                if isinstance(handler, QTextEditLogger):
+                    handler.setLevel(logging.DEBUG)
         else:
-            logging.getLogger().setLevel(logging.INFO)
+            for handler in self.logger.handlers:
+                if isinstance(handler, QTextEditLogger):
+                    handler.setLevel(logging.INFO)
         if self.aligned:
             logging.info("Starting AutoPA routine")
             self.aligned = False
@@ -455,6 +547,25 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
 
     def on_accuracy_changed(self, accuracy):
         self.save_last_accuracy(accuracy)
+
+    def on_verbose_changed(self, state):
+        self.save_last_verbose(bool(state))
+        if state:
+            for handler in self.logger.handlers:
+                if isinstance(handler, QTextEditLogger):
+                    handler.setLevel(logging.DEBUG)
+        else:
+            for handler in self.logger.handlers:
+                if isinstance(handler, QTextEditLogger):
+                    handler.setLevel(logging.INFO)
+
+    def open_logs_folder(self):
+        if sys.platform == "win32":
+            os.startfile(self.log_dir)
+        elif sys.platform == "darwin":  # macOS
+            os.system(f"open {self.log_dir}")
+        else:  # Linux
+            os.system(f"xdg-open {self.log_dir}")
 
 software_options = collections.OrderedDict([
     ('NINA', ''),
