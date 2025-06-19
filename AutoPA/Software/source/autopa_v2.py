@@ -17,9 +17,10 @@ import sys, os
 import collections
 import logging
 from pathlib import Path
+from PyQt5.QtCore import QObject, QThread, pyqtSignal
 
 # Application version
-VERSION = "2.5"
+VERSION = "2.6"
 
 class ElapsedTimeFormatter(logging.Formatter):
     def __init__(self, start_time):
@@ -65,6 +66,21 @@ class DuplicateFilter(object):
         rv = record.msg not in self.msgs
         self.msgs.append(record.msg)
         return rv
+
+class CommandWorker(QObject):
+    commandFinished = pyqtSignal(str, str)  # (label, result)
+    finished = pyqtSignal()
+
+    def __init__(self, parent, commands):
+        super().__init__()
+        self.parent = parent
+        self.commands = commands
+
+    def run(self):
+        for label, command in self.commands:
+            result = self.parent.sendCommand(command, self.parent.software.currentText(), self.parent.telescope, self.parent.serialport)
+            self.commandFinished.emit(label, str(result))
+        self.finished.emit()
 
 class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
     def __init__(self):
@@ -368,15 +384,10 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
 
     def parseError(self, software, input, azimuthOffset, altitudeOffset):
         error = []
-        if software == "NINA3":
+        if software == "NINA.x3":
             # Log file lists Az, then Alt error
             error.append(self.parseNINA3deg(input[4], input[5], input[6]) - altitudeOffset) 
             error.append(self.parseNINA3deg(input[1], input[2], input[3]) - azimuthOffset)
-            error.append(math.hypot(error[0], error[1]))
-        if software == "NINA":
-            data = json.loads(input[1])
-            error.append((self.degToArcmin(data["AltitudeError"]) - altitudeOffset)*(-1))
-            error.append((self.degToArcmin(data["AzimuthError"]) - azimuthOffset)*(-1))
             error.append(math.hypot(error[0], error[1]))
         elif software.startswith("Sharpcap"):
             error.append(self.degToArcmin(self.altitudeError(input[1], input[3])) - altitudeOffset)
@@ -447,7 +458,7 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
             logging.info("Starting AutoPA routine")
             self.aligned = False
             self.accuracy = float(self.accuracy_input.text()) / 60
-            self.timer.start(1000)
+            self.timer.start(2500)
         if self.telescopeName.text() == "":
             if self.software.currentText() == "Ekos":
                 self.telescope = "LX200 GPS"
@@ -470,7 +481,26 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
             
             print("Opening serial port on " + self.serialport + '...')
             self.ser = serial.Serial(self.serialport, 19200, timeout = 0.2)
-        
+
+        # Refactored: Send initial mount commands in a background thread
+        commands = [
+            ("Mount", ":GVP#,#"),
+            ("LST", ":XGL#,#"),
+            ("Latitude", ":Gt#,#"),
+            ("Longitude", ":Gg#,#"),
+            ("Hemisphere", ":XGHS#,#"),
+            ("Hardware", ":XGM#,#"),
+        ]
+        self.thread = QThread()
+        self.worker = CommandWorker(self, commands)
+        self.worker.moveToThread(self.thread)
+        self.worker.commandFinished.connect(self.handle_command_result)
+        self.worker.finished.connect(self.thread.quit)
+        self.worker.finished.connect(self.worker.deleteLater)
+        self.thread.finished.connect(self.thread.deleteLater)
+        self.thread.started.connect(self.worker.run)
+        self.thread.start()
+
     def stop(self):
         self.aligned = True
         self.timer.stop()
@@ -512,7 +542,7 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
                         currentEntry = datetime.strptime(datetime.fromtimestamp(log[1]).strftime("%Y-%m-%d") + " " + log[0][0][:-1], '%Y-%m-%d %H:%M:%S.%f')
                         if currentEntry != self.lastEntry and currentEntry > self.adjustmentFinished:
                             self.solveCounter += 1 #Increment counter if the latest unused entry was entered into the log after the adjustment was finished.
-                        if (self.software.currentText() != "NINA" and self.solveCounter >= 1) or (self.software.currentText() == "NINA" and self.solveCounter >= 3):
+                        if (self.software.currentText() != "NINA3.x" and self.solveCounter >= 1) or (self.software.currentText() == "NINA3.x" and self.solveCounter >= 3):
                             #If using NINA, wait for three complete solves after adjustment is finished to prevent using old data
                             self.solveCounter = 0
                             error = self.parseError(self.software.currentText(), log[0], float(self.azimuthOffset.text()), float(self.altitudeOffset.text()))
@@ -530,7 +560,7 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
                                 result = self.sendCommand(f":MAL{error[0]:.4f}#", self.software.currentText(), self.telescope, self.serialport)
                                 logging.debug(f"Adjusting altitude by {error[0]:.3f} arcminutes.")
                                 result = self.sendCommand(f":MAZ{error[1]*(-1):.4f}#", self.software.currentText(), self.telescope, self.serialport)
-                                logging.debug(f"Adjusting altitude by {error[0]:.3f} arcminutes.")
+                                logging.debug(f"Adjusting azimuth by {error[1]:.3f} arcminutes.")
                                 self.lastEntry = currentEntry
                         else:
                             logging.info(f"Waiting for {self.software.currentText()} to re-solve since last adjustment finished.")
@@ -567,9 +597,12 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
         else:  # Linux
             os.system(f"xdg-open {self.log_dir}")
 
+    def handle_command_result(self, label, result):
+        logging.info(f"{label:>10}: {result}")
+        QtWidgets.QApplication.processEvents()
+
 software_options = collections.OrderedDict([
-    ('NINA', ''),
-    ('NINA3', ''),
+    ('NINA3.x', ''),
     ('Sharpcap4.x', ''),
     ('Sharpcap3.2', ''),
     ('Ekos', '')
@@ -577,9 +610,7 @@ software_options = collections.OrderedDict([
 
 today = date.today().strftime("%Y-%m-%d")
 softwareTypes = {
-"NINA":{        "expression": "(\d{2}:\d{2}:\d{2}.\d{3})\s-\s({.*})", 
-                "logpath": fr"{Path.home()}\Documents\N.I.N.A\PolarAlignment\*.log"},
-"NINA3":{        "expression": r"[\d-]*T(.*?)\|.*PolarAlignment.cs\|.*Calculated Error: Az: (-*\d{2}).*?(\d{2})' (\d{2})\", Alt: (-*\d{2}).*?(\d{2})' (\d{2})\",.*",
+"NINA3.x":{     "expression": r"[\d-]*T(.*?)\|.*PolarAlignment.cs\|.*Calculated Error: Az: (-*\d{2}).*?(\d{2})' (\d{2})\", Alt: (-*\d{2}).*?(\d{2})' (\d{2})\",.*",
                 "logpath": fr"{os.getenv('LOCALAPPDATA')}\NINA\Logs\*.log"},
 "Sharpcap3.2":{ "expression": "(?:Info:)\t(\d{2}:\d{2}:\d{2}.\d{7}).*(?:AltAzCor=)(?:Alt=)(.*)[,](?:Az=)(.*).\s(?:AltAzPole=)(?:Alt=)(.*)[,](?:Az=)(.*).[,]\s(?:AltAzOffset=).*", 
                 "logpath": fr"{os.getenv('LOCALAPPDATA')}\SharpCap\logs\*.log"},
