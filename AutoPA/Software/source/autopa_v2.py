@@ -20,7 +20,7 @@ from pathlib import Path
 from PyQt5.QtCore import QObject, QThread, pyqtSignal
 
 # Application version
-VERSION = "2.6"
+VERSION = "2.7"
 
 class ElapsedTimeFormatter(logging.Formatter):
     def __init__(self, start_time):
@@ -384,7 +384,7 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
 
     def parseError(self, software, input, azimuthOffset, altitudeOffset):
         error = []
-        if software == "NINA.x3":
+        if software == "NINA3.x":
             # Log file lists Az, then Alt error
             error.append(self.parseNINA3deg(input[4], input[5], input[6]) - altitudeOffset) 
             error.append(self.parseNINA3deg(input[1], input[2], input[3]) - azimuthOffset)
