@@ -20,7 +20,7 @@ from pathlib import Path
 from PyQt5.QtCore import QObject, QThread, pyqtSignal
 
 # Application version
-VERSION = "2.7"
+VERSION = "2.8"
 
 class ElapsedTimeFormatter(logging.Formatter):
     def __init__(self, start_time):
@@ -386,8 +386,9 @@ class AutoPA(QtWidgets.QDialog, QtWidgets.QPlainTextEdit):
         error = []
         if software == "NINA3.x":
             # Log file lists Az, then Alt error
-            error.append(self.parseNINA3deg(input[4], input[5], input[6]) - altitudeOffset) 
-            error.append(self.parseNINA3deg(input[1], input[2], input[3]) - azimuthOffset)
+            # Convert degrees to arcminutes using degToArcmin()
+            error.append(self.degToArcmin(self.parseNINA3deg(input[4], input[5], input[6])) - altitudeOffset) 
+            error.append(self.degToArcmin(self.parseNINA3deg(input[1], input[2], input[3])) - azimuthOffset)
             error.append(math.hypot(error[0], error[1]))
         elif software.startswith("Sharpcap"):
             error.append(self.degToArcmin(self.altitudeError(input[1], input[3])) - altitudeOffset)
