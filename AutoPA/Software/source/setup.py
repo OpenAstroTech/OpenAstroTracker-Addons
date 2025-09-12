@@ -4,9 +4,9 @@ from cx_Freeze import setup, Executable
 def getTargetName():
     myOS = platform.system()
     if myOS == 'Linux':
-        return "AutoPA_v2.7.0"
+        return "AutoPA_v2.8.0"
     elif myOS == 'Windows':
-        return "AutoPA_v2.7.0.exe"
+        return "AutoPA_v2.8.0.exe"
 
 base = None
 if sys.platform == "win32":
@@ -36,7 +36,7 @@ include_files = []
 
 setup(
     name="AutoPA",
-    version="2.7.0",
+    version="2.8.0",
     description="AutoPA Polar Alignment Tool",
     executables=[
         Executable(
