@@ -613,11 +613,11 @@ today = date.today().strftime("%Y-%m-%d")
 softwareTypes = {
 "NINA3.x":{     "expression": r"[\d-]*T(.*?)\|.*PolarAlignment.cs\|.*Calculated Error: Az: (-*\d{2}).*?(\d{2})' (\d{2})\", Alt: (-*\d{2}).*?(\d{2})' (\d{2})\",.*",
                 "logpath": fr"{os.getenv('LOCALAPPDATA')}\NINA\Logs\*.log"},
-"Sharpcap3.2":{ "expression": "(?:Info:)\t(\d{2}:\d{2}:\d{2}.\d{7}).*(?:AltAzCor=)(?:Alt=)(.*)[,](?:Az=)(.*).\s(?:AltAzPole=)(?:Alt=)(.*)[,](?:Az=)(.*).[,]\s(?:AltAzOffset=).*", 
+"Sharpcap3.2":{ "expression": r"(?:Info:)\t(\d{2}:\d{2}:\d{2}.\d{7}).*(?:AltAzCor=)(?:Alt=)(.*)[,](?:Az=)(.*).\s(?:AltAzPole=)(?:Alt=)(.*)[,](?:Az=)(.*).[,]\s(?:AltAzOffset=).*", 
                 "logpath": fr"{os.getenv('LOCALAPPDATA')}\SharpCap\logs\*.log"},
-"Sharpcap4.x":{ "expression": "(?:Info)\W*(\d{2}:\d{2}:\d{2}.\d{6}).*(?:AltAzCor=)(?:Alt=)(.*)[,](?:Az=)(.*).\s(?:AltAzPole=)(?:Alt=)(.*)[,](?:Az=)(.*).[,]\s(?:AltAzOffset=).*", 
+"Sharpcap4.x":{ "expression": r"(?:Info)\W*(\d{2}:\d{2}:\d{2}.\d{6}).*(?:AltAzCor=)(?:Alt=)(.*)[,](?:Az=)(.*).\s(?:AltAzPole=)(?:Alt=)(.*)[,](?:Az=)(.*).[,]\s(?:AltAzOffset=).*", 
                 "logpath": fr"{os.getenv('LOCALAPPDATA')}\SharpCap\logs\*.log"},
-"Ekos":{ "expression": "(\d{2}:\d{2}:\d{2}.\d{3}).*(?:PAA Refresh).*(?:Corrected az:).*(?:\()(\s?-?\d\.\d{3}).*(?:alt:).*(\s?-?\d\.\d{3}).*(?:total:)", 
+"Ekos":{ "expression": r"(\d{2}:\d{2}:\d{2}.\d{3}).*(?:PAA Refresh).*(?:Corrected az:).*(?:\()(\s?-?\d\.\d{3}).*(?:alt:).*(\s?-?\d\.\d{3}).*(?:total:)", 
                 "logpath": f"{Path.home()}/.local/share/kstars/logs/{today}/*.txt"}
 }            
         
